@@ -147,7 +147,6 @@ void loop()
       rotateDisplayFlag = false;
     }
     if(power_mW < 1) {
-      count_until_dim = 0;
       show_voltage_not_power = true;
     }
 
