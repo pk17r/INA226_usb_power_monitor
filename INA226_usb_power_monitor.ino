@@ -32,9 +32,11 @@ const uint8_t RotatePin = 2;
 
 bool show_voltage_not_power = true;
 uint8_t count_until_dim = 0;
-const uint8_t kDimDisplayCount = 120;
+uint8_t count_no_current = 0;
+const uint8_t kDimDisplayCount = 120, kShowScreensaverCount = 30;
 bool invertDisplay = false;
 const float kPowerLimitmW = 2500;
+const float kMinCurrentLimitmA = 0.1;
 
 const uint8_t CURRENT=0, VOLTAGE=1, POWER=2;
 
@@ -87,12 +89,18 @@ void setup()
 }
 
 void displayValue(float value, uint8_t value_type) {
+  // display.setTextSize(2); // Draw 2X-scale text
   int left_space = 2;
   bool milli = true;
   if(value >= 1000) {
+    // e.g. 5200mV or 1520mA or 12000mV
     left_space += 3;
     value /= 1000;
     milli = false;
+    // if value is 12V or 22V or 10W
+    if(value >= 10) {
+      left_space--;
+    }
   }
   else {
     if(value >= 100)
@@ -124,10 +132,14 @@ void displayValue(float value, uint8_t value_type) {
   display.print(value, (milli ? 1 : 2));
 }
 
+
+
 void loop()
 {
 
   /* MEASUREMENTS */
+
+  bool no_current_for_this_run = false;
 
   // Serial.println("\nLOADV(V) CURRENT(mA) POWER(mW)");
   for (int i = 0; i < 40; i++)
@@ -135,6 +147,7 @@ void loop()
     float voltage_V = INA.getBusVoltage() - (float)INA.getShuntVoltage_mV() / 1000;
     float current_mA = INA.getCurrent_mA();
     float power_mW = voltage_V * current_mA;
+    bool no_current = false;
 
     if(rotateDisplayFlag) {
       if(rotation == 0)
@@ -143,11 +156,14 @@ void loop()
         rotation = 0;
       display.setRotation(rotation);
       count_until_dim = 0;
+      count_no_current = 0;
       display.dim(false);
       rotateDisplayFlag = false;
     }
-    if(power_mW < 1) {
+    if(abs(current_mA) <= kMinCurrentLimitmA) {
       show_voltage_not_power = true;
+      no_current = true;
+      no_current_for_this_run = (no_current_for_this_run | no_current);
     }
 
     if(!invertDisplay && (power_mW >= kPowerLimitmW)) {
@@ -166,17 +182,30 @@ void loop()
     // Serial.print(power_mW, 1);
     // Serial.println();
     // Clear the buffer
-    display.clearDisplay();
-    displayValue(current_mA, CURRENT);
+    if(!no_current || (count_no_current < kShowScreensaverCount)) {
+      display.clearDisplay();
+      displayValue(current_mA, CURRENT);
 
-    if(show_voltage_not_power)
-      displayValue(voltage_V*1000, VOLTAGE);
-    else
-      displayValue(power_mW, POWER);
-    display.display();
-    delay(10);
-
+      if(show_voltage_not_power)
+        displayValue(voltage_V*1000, VOLTAGE);
+      else
+        displayValue(power_mW, POWER);
+      display.display();
+      delay(10);
+    }
+    else {
+      screenSaver(voltage_V);
+    }
   }
+
+  if(no_current_for_this_run) {
+    if(count_no_current < kShowScreensaverCount)
+      count_no_current++;
+  }
+  else {
+    count_no_current = 0;
+  }
+
 
   if(count_until_dim > 0)
     show_voltage_not_power = !show_voltage_not_power;
@@ -309,6 +338,94 @@ void INA226Setup() {
   // if(cu < 40)
   //   Serial.println("********** NOTE: IOUT needs to be more than 50mA for better shunt resistance calibration. **********");
   // delay(1000);
+}
+
+void screenSaver(float voltage_V)
+{
+  display.clearDisplay();
+  // display.setTextSize(1); // Draw 2X-scale text
+  // Draw pixels in the outer edges  
+  // display.drawPixel(0,0,SSD1306_WHITE);
+  // display.drawPixel(127,0,SSD1306_WHITE);
+  // display.drawPixel(127,31,SSD1306_WHITE);
+  // display.drawPixel(0,31,SSD1306_WHITE);
+  // display.display();
+
+  // print V in smalls
+  bool text_is_small = true;
+  display.setTextSize(1); // Draw 1X-scale text
+  display.setCursor(50,y1*2/3);
+  display.print(voltage_V,2);
+  display.print("V");
+  display.display();
+
+  // Draw hollow circles
+  for (uint_least8_t radius=20; radius<75; radius+=3)
+  {
+    float voltage_V_new = INA.getBusVoltage() - (float)INA.getShuntVoltage_mV() / 1000;
+    float current_mA = INA.getCurrent_mA();
+    if(rotateDisplayFlag || (abs(current_mA) > kMinCurrentLimitmA)) {
+      display.setTextSize(2); // Reset to Draw 2X-scale text
+      count_no_current = 0;
+      return;
+    }
+    delay(25);
+    // draw new outer ring
+    display.drawCircle(64,16,radius,SSD1306_WHITE);
+    if (radius > 30)
+    {
+      // clear old inner ring
+      display.drawCircle(64,16,radius-15,SSD1306_BLACK);
+    }
+    // update small text voltage value
+    if(text_is_small) {
+      // clear old voltage
+      display.setCursor(50,y1*2/3);
+      display.setTextColor(SSD1306_BLACK);
+      display.print(voltage_V,2);
+      display.print("V");
+      // display new voltage
+      display.setTextColor(SSD1306_WHITE);
+      display.setCursor(50,y1*2/3);
+      display.print(voltage_V_new,2);
+      display.print("V");
+      display.display();
+      // record
+      voltage_V = voltage_V_new;
+    }
+    if (radius > 40)
+    {
+      // move to bigger text
+      if(text_is_small) {
+        display.setCursor(50,y1*2/3);
+        display.setTextColor(SSD1306_BLACK);
+        display.print(voltage_V,2);
+        display.print("V");
+        // display.display();
+        // move back to double text size
+        display.setTextSize(2); // Draw 2X-scale text
+        display.setTextColor(SSD1306_WHITE);
+        text_is_small = false;
+      }
+      else {
+        // clear last voltage display
+        display.setTextColor(SSD1306_BLACK);
+        display.setCursor(35,y1/2);
+        display.print(voltage_V,2);
+        display.print("V");
+        display.setTextColor(SSD1306_WHITE);
+      }
+      // Draw text with normal size
+      // display.setCursor(30,y0);
+      // display.print("VI Meter");
+      display.setCursor(35,y1/2);
+      display.print(voltage_V_new,2);
+      display.print("V");
+      // record
+      voltage_V = voltage_V_new;
+    }
+    display.display();
+  }
 }
 
 //  -- END OF FILE --
