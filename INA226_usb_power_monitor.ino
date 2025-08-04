@@ -25,6 +25,24 @@ INA226 INA(0x40, &Wire);
 
 // #define RUN_CALIBRATION         // turn this off after calibration!
 
+/*
+CALIBRATION VALUES
+
+YELLOW DISPLAY BOARD
+const float shunt = 0.02025;
+const float current_LSB_mA = 0.10;
+const float current_zero_offset_mA = 0;
+const uint16_t bus_V_scaling_e4 = 9804;
+
+
+BLUE DISPLAY BOARD
+const float shunt = 0.02027;
+const float current_LSB_mA = 0.10;
+const float current_zero_offset_mA = -0.100;
+const uint16_t bus_V_scaling_e4 = 9943;
+
+*/
+
 void INA226Setup();
 const uint8_t y0 = 0, y1 = 18;
 
@@ -246,10 +264,10 @@ void INA226Setup() {
 
   /* USER SET VALUES */
 
-  const float shunt = 0.02025;                      /* shunt (Shunt Resistance in Ohms). Lower shunt gives higher accuracy but lower current measurement range. Recommended value 0.020 Ohm. Min 0.001 Ohm */
+  const float shunt = 0.02027;                      /* shunt (Shunt Resistance in Ohms). Lower shunt gives higher accuracy but lower current measurement range. Recommended value 0.020 Ohm. Min 0.001 Ohm */
   const float current_LSB_mA = 0.10;              /* current_LSB_mA (Current Least Significant Bit in milli Amperes). Recommended values: 0.050, 0.100, 0.250, 0.500, 1, 2, 2.5 (in milli Ampere units) */
-  const float current_zero_offset_mA = 0;         /* current_zero_offset_mA (Current Zero Offset in milli Amperes, default = 0) */
-  const uint16_t bus_V_scaling_e4 = 9804;        /* bus_V_scaling_e4 (Bus Voltage Scaling Factor, default = 10000) */
+  const float current_zero_offset_mA = -0.100;         /* current_zero_offset_mA (Current Zero Offset in milli Amperes, default = 0) */
+  const uint16_t bus_V_scaling_e4 = 9943;        /* bus_V_scaling_e4 (Bus Voltage Scaling Factor, default = 10000) */
 
   if(INA.configure(shunt, current_LSB_mA, current_zero_offset_mA, bus_V_scaling_e4)) {
     #ifdef RUN_CALIBRATION
