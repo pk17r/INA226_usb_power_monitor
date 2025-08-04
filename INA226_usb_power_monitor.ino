@@ -34,7 +34,10 @@ bool show_voltage_not_power = true;
 uint8_t count_until_dim = 0;
 uint8_t count_no_current = 0;
 const uint8_t kDimDisplayCount = 120, kShowScreensaverCount = 30;
+// #define INVERT_DISPLAY_FUNCTION
+#ifdef INVERT_DISPLAY_FUNCTION
 bool invertDisplay = false;
+#endif
 const float kPowerLimitmW = 2500;
 const float kMinCurrentLimitmA = 0.1;
 
@@ -142,7 +145,7 @@ void loop()
   bool no_current_for_this_run = false;
 
   // Serial.println("\nLOADV(V) CURRENT(mA) POWER(mW)");
-  for (int i = 0; i < 40; i++)
+  for (int i = 0; i < 20; i++)
   {
     float voltage_V = INA.getBusVoltage() - (float)INA.getShuntVoltage_mV() / 1000;
     float current_mA = INA.getCurrent_mA();
@@ -166,6 +169,7 @@ void loop()
       no_current_for_this_run = (no_current_for_this_run | no_current);
     }
 
+#ifdef INVERT_DISPLAY_FUNCTION
     if(!invertDisplay && (power_mW >= kPowerLimitmW)) {
       invertDisplay = true;
       display.invertDisplay(invertDisplay);
@@ -174,6 +178,7 @@ void loop()
       invertDisplay = false;
       display.invertDisplay(invertDisplay);
     }
+#endif
 
     // Serial.print(voltage_V, 3);
     // Serial.print("\t");
@@ -191,7 +196,7 @@ void loop()
       else
         displayValue(power_mW, POWER);
       display.display();
-      delay(10);
+      delay(100);
     }
     else {
       screenSaver(voltage_V);
@@ -241,10 +246,10 @@ void INA226Setup() {
 
   /* USER SET VALUES */
 
-  const float shunt = 0.02122;                      /* shunt (Shunt Resistance in Ohms). Lower shunt gives higher accuracy but lower current measurement range. Recommended value 0.020 Ohm. Min 0.001 Ohm */
+  const float shunt = 0.02025;                      /* shunt (Shunt Resistance in Ohms). Lower shunt gives higher accuracy but lower current measurement range. Recommended value 0.020 Ohm. Min 0.001 Ohm */
   const float current_LSB_mA = 0.10;              /* current_LSB_mA (Current Least Significant Bit in milli Amperes). Recommended values: 0.050, 0.100, 0.250, 0.500, 1, 2, 2.5 (in milli Ampere units) */
-  const float current_zero_offset_mA = -0.100;         /* current_zero_offset_mA (Current Zero Offset in milli Amperes, default = 0) */
-  const uint16_t bus_V_scaling_e4 = 9863;        /* bus_V_scaling_e4 (Bus Voltage Scaling Factor, default = 10000) */
+  const float current_zero_offset_mA = 0;         /* current_zero_offset_mA (Current Zero Offset in milli Amperes, default = 0) */
+  const uint16_t bus_V_scaling_e4 = 9804;        /* bus_V_scaling_e4 (Bus Voltage Scaling Factor, default = 10000) */
 
   if(INA.configure(shunt, current_LSB_mA, current_zero_offset_mA, bus_V_scaling_e4)) {
     #ifdef RUN_CALIBRATION
