@@ -7,7 +7,7 @@
 //  atmega328p Fuse settings to use internal clock and flash MiniCore Atmega328 using CP2102
 //  L 0xE2
 //  H 0xD6
-//  E 0xFD
+//  E 0xFE
 //  LB 0xFF
 
 
@@ -23,7 +23,8 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 INA226 INA(0x40, &Wire);
 
-// #define RUN_CALIBRATION         // turn this off after calibration!
+const bool kRUN_CALIBRATION = false;         // turn this off after calibration!
+const bool kSERIAL_PRINTS = false;           // turn this off in production
 
 /*
 CALIBRATION VALUES
@@ -61,6 +62,8 @@ const float kMinCurrentLimitmA = 0.1;
 
 const uint8_t CURRENT=0, VOLTAGE=1, POWER=2;
 
+const uint8_t kUpArrow = 0x18, kDownArrow = 0x19;
+
 volatile bool rotateDisplayFlag = false;
 uint8_t rotation = 0;
 unsigned long last_rotation_ms = 0;
@@ -77,13 +80,11 @@ void RotateDisplayISR() {
 
 void setup()
 {
-  #ifdef RUN_CALIBRATION
-  Serial.begin(115200);
-  #endif
+  if(kSERIAL_PRINTS) Serial.begin(115200);
 
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    // Serial.println(F("SSD1306 allocation failed"));
+    if(kSERIAL_PRINTS) Serial.println(F("SSD1306 allocation failed"));
     delay(10);
   }
   display.clearDisplay();
@@ -96,7 +97,8 @@ void setup()
   display.dim(false);
   display.display();
   delay(1000);
-  // Serial.println(F("SSD1306 allocation success"));
+
+  if(kSERIAL_PRINTS) Serial.println(F("SSD1306 allocation success"));
 
   pinMode(RotatePin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(RotatePin), RotateDisplayISR, FALLING);
@@ -162,7 +164,7 @@ void loop()
 
   bool no_current_for_this_run = false;
 
-  // Serial.println("\nLOADV(V) CURRENT(mA) POWER(mW)");
+  Serial.println("\nLOADV(V) CURRENT(mA) POWER(mW)");
   for (int i = 0; i < 20; i++)
   {
     float voltage_V = INA.getBusVoltage() - (float)INA.getShuntVoltage_mV() / 1000;
@@ -198,21 +200,40 @@ void loop()
     }
 #endif
 
-    // Serial.print(voltage_V, 3);
-    // Serial.print("\t");
-    // Serial.print(current_mA, 2);
-    // Serial.print("\t");
-    // Serial.print(power_mW, 1);
-    // Serial.println();
+    if(kSERIAL_PRINTS) {
+      Serial.print(voltage_V, 3);
+      Serial.print("\t");
+      Serial.print(current_mA, 2);
+      Serial.print("\t");
+      Serial.print(power_mW, 1);
+      Serial.println();
+    }
+
     // Clear the buffer
     if(!no_current || (count_no_current < kShowScreensaverCount)) {
       display.clearDisplay();
+
+      bool direction = (current_mA > 0);
+      if(!direction) {
+        current_mA = -current_mA;
+        power_mW = -power_mW;
+      }
+
+      // first row
       displayValue(current_mA, CURRENT);
 
+      // second row
       if(show_voltage_not_power)
         displayValue(voltage_V*1000, VOLTAGE);
       else
         displayValue(power_mW, POWER);
+
+      // current direction
+      if(current_mA > 0) {
+        display.setCursor(10, (show_voltage_not_power? y0 : y1));
+        display.write((direction ? kDownArrow : kUpArrow));   // Print current direction
+      }
+
       display.display();
       delay(100);
     }
@@ -243,9 +264,7 @@ void loop()
 
 void INA226Setup() {
   if (!INA.begin()) {
-    #ifdef RUN_CALIBRATION
-    Serial.println("could not connect. Fix and Reboot");
-    #endif
+    if(kSERIAL_PRINTS) Serial.println("could not connect. Fix and Reboot");
   }
 
   /* STEPS TO CALIBRATE INA226
@@ -270,76 +289,82 @@ void INA226Setup() {
   const uint16_t bus_V_scaling_e4 = 9943;        /* bus_V_scaling_e4 (Bus Voltage Scaling Factor, default = 10000) */
 
   if(INA.configure(shunt, current_LSB_mA, current_zero_offset_mA, bus_V_scaling_e4)) {
-    #ifdef RUN_CALIBRATION
-    Serial.println("\n***** Configuration Error! Chosen values outside range *****\n");
-    #endif
+    if(kSERIAL_PRINTS) Serial.println("\n***** Configuration Error! Chosen values outside range *****\n");
   }
 
   INA.setAverage(INA226_16_SAMPLES);
 
   /* CALIBRATION */
 
-  #ifdef RUN_CALIBRATION
-  display.clearDisplay();
-  display.setCursor(0, y0);
-  display.print("RS ");
-  display.print(shunt, 4);
-  display.setCursor(0, y1);
-  display.print("bVs ");
-  display.print(bus_V_scaling_e4);
-  display.display();
-  delay(1000);
+  if(kRUN_CALIBRATION)
+  {
+    display.clearDisplay();
+    display.setCursor(0, y0);
+    display.print("RS ");
+    display.print(shunt, 4);
+    display.setCursor(0, y1);
+    display.print("bVs ");
+    display.print(bus_V_scaling_e4);
+    display.display();
+    delay(1000);
 
-  Serial.print("Shunt:\t");
-  Serial.print(shunt, 4);
-  Serial.println(" Ohm");
-  Serial.print("current_LSB_mA:\t");
-  Serial.print(current_LSB_mA * 1e+3, 1);
-  Serial.println(" uA / bit");
-  Serial.print("\nMax Measurable Current:\t");
-  Serial.print(INA.getMaxCurrent(), 3);
-  Serial.println(" A");
+    if(kSERIAL_PRINTS) {
+      Serial.print("Shunt:\t");
+      Serial.print(shunt, 4);
+      Serial.println(" Ohm");
+      Serial.print("current_LSB_mA:\t");
+      Serial.print(current_LSB_mA * 1e+3, 1);
+      Serial.println(" uA / bit");
+      Serial.print("\nMax Measurable Current:\t");
+      Serial.print(INA.getMaxCurrent(), 3);
+      Serial.println(" A");
+    }
 
-  float bv = 0, cu = 0;
-  for (int i = 0; i < 10; i++) {
-    bv += INA.getBusVoltage();
-    cu += INA.getCurrent_mA();
-    delay(150);
+    float bv = 0, cu = 0;
+    for (int i = 0; i < 10; i++) {
+      bv += INA.getBusVoltage();
+      cu += INA.getCurrent_mA();
+      delay(150);
+    }
+    bv /= 10;
+    cu /= 10;
+    if(kSERIAL_PRINTS) Serial.println("\nAverage Bus and Current values for use in Shunt Resistance, Bus Voltage and Current Zero Offset calibration:");
+    bv = 0;
+    for (int i = 0; i < 10; i++) {
+      bv += INA.getBusVoltage();
+      delay(100);
+    }
+    bv /= 10;
+    if(kSERIAL_PRINTS) {
+      Serial.print("\nAverage of 10 Bus Voltage values = ");
+      Serial.print(bv, 3);
+      Serial.println("V");
+    }
+    cu = 0;
+    for (int i = 0; i < 10; i++) {
+      cu += INA.getCurrent_mA();
+      delay(100);
+    }
+    cu /= 10;
+    if(kSERIAL_PRINTS) {
+      Serial.print("Average of 10 Current values = ");
+      Serial.print(cu, 3);
+      Serial.println("mA");
+    }
+
+    // show calibration values on display
+    display.clearDisplay();
+    display.setCursor(0, y0);
+    display.print(cu, 3);
+    display.print(" mA");
+    display.setCursor(0, y1);
+    display.print(bv, 3);
+    display.print(" V");
+    display.display();
+    delay(4000);
   }
-  bv /= 10;
-  cu /= 10;
-  Serial.println("\nAverage Bus and Current values for use in Shunt Resistance, Bus Voltage and Current Zero Offset calibration:");
-  bv = 0;
-  for (int i = 0; i < 10; i++) {
-    bv += INA.getBusVoltage();
-    delay(100);
-  }
-  bv /= 10;
-  Serial.print("\nAverage of 10 Bus Voltage values = ");
-  Serial.print(bv, 3);
-  Serial.println("V");
-  cu = 0;
-  for (int i = 0; i < 10; i++) {
-    cu += INA.getCurrent_mA();
-    delay(100);
-  }
-  cu /= 10;
-  Serial.print("Average of 10 Current values = ");
-  Serial.print(cu, 3);
-  Serial.println("mA");
 
-  // show calibration values on display
-  display.clearDisplay();
-  display.setCursor(0, y0);
-  display.print(cu, 3);
-  display.print(" mA");
-  display.setCursor(0, y1);
-  display.print(bv, 3);
-  display.print(" V");
-  display.display();
-  delay(4000);
-  #endif
-
+  if(kSERIAL_PRINTS) {
   // Serial.println("\nCALIBRATION VALUES TO USE:\t(DMM = Digital MultiMeter)");
   // Serial.println("Step 5. Attach a power supply with voltage 5-10V to INA226 on VBUS/IN+ and GND pins, without any load.");
   // Serial.print("\tcurrent_zero_offset_mA = ");
@@ -361,6 +386,7 @@ void INA226Setup() {
   // if(cu < 40)
   //   Serial.println("********** NOTE: IOUT needs to be more than 50mA for better shunt resistance calibration. **********");
   // delay(1000);
+  }
 }
 
 void screenSaver(float voltage_V)
