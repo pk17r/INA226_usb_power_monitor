@@ -64,10 +64,9 @@ const uint8_t CURRENT=0, VOLTAGE=1, POWER=2;
 
 const uint8_t kUpArrow = 0x18, kDownArrow = 0x19;
 
-volatile bool rotateDisplayFlag = false;
-uint8_t rotation = 0;
 unsigned long last_rotation_ms = 0;
 unsigned long kMinRotationGapMs = 250;
+volatile bool rotateDisplayFlag = false;
 void RotateDisplayISR() {
   if(!rotateDisplayFlag) {
     unsigned long now_ms = millis();
@@ -76,6 +75,18 @@ void RotateDisplayISR() {
       rotateDisplayFlag = true;
     }
   }
+}
+
+bool display_rotated = false;
+void SetDisplayRotation() {
+  // default state 2, rotated state 0
+  const uint8_t kDefaultRotation = 2;
+  const uint8_t kInvertedRotation = 0;
+  display.setRotation((display_rotated ? kInvertedRotation: kDefaultRotation));
+}
+void RotateDisplay() {
+  display_rotated = !display_rotated;
+  SetDisplayRotation();
 }
 
 void setup()
@@ -88,6 +99,7 @@ void setup()
     delay(10);
   }
   display.clearDisplay();
+  SetDisplayRotation();
   display.setTextSize(2); // Draw 2X-scale text
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, y0);
@@ -173,11 +185,7 @@ void loop()
     bool no_current = false;
 
     if(rotateDisplayFlag) {
-      if(rotation == 0)
-        rotation = 2;
-      else
-        rotation = 0;
-      display.setRotation(rotation);
+      RotateDisplay();
       count_until_dim = 0;
       count_no_current = 0;
       display.dim(false);
@@ -231,6 +239,8 @@ void loop()
       // current direction
       if(current_mA > 0) {
         display.setCursor(10, (show_voltage_not_power? y0 : y1));
+        if(display_rotated)
+          direction = !direction;
         display.write((direction ? kDownArrow : kUpArrow));   // Print current direction
       }
 
